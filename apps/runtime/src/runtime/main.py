@@ -59,9 +59,11 @@ class VoiceLoop:
         has_any_speech = False
         max_total = int(MAX_RECORD_SEC * SAMPLE_RATE / BLOCK_SIZE)
         total_frames = 0
+        noise_floor = 0.01
+        min_rms = 0.01
 
         def callback(indata, _frames_count, _time_info, status):
-            nonlocal speech_active, silence_frames, has_any_speech, total_frames
+            nonlocal speech_active, silence_frames, has_any_speech, total_frames, noise_floor, min_rms
             if not self._running:
                 raise sd.CallbackAbort
 
@@ -70,16 +72,22 @@ class VoiceLoop:
             total_frames += 1
 
             rms = np.sqrt(np.mean(indata.flatten() ** 2))
+            if rms > 0 and rms < min_rms:
+                min_rms = rms
+            noise_floor = min_rms * 2.5 if min_rms < 0.01 else min_rms
 
-            if prob > VAD_THRESHOLD or rms > 0.008:
+            speech_from_vad = prob > VAD_THRESHOLD
+            speech_from_energy = rms > noise_floor * 2
+
+            if speech_from_vad or speech_from_energy:
                 speech_active = True
                 has_any_speech = True
                 silence_frames = 0
-            elif not speech_active and total_frames > int(3 * SAMPLE_RATE / BLOCK_SIZE) and rms > 0.005:
+            elif not speech_active and total_frames > int(3 * SAMPLE_RATE / BLOCK_SIZE) and rms > noise_floor * 1.5:
                 speech_active = True
                 has_any_speech = True
                 silence_frames = 0
-            elif speech_active and prob < 0.03 and rms < 0.004:
+            elif speech_active and not speech_from_vad and rms < noise_floor * 1.5:
                 silence_frames += 1
                 if silence_frames >= max_silence:
                     raise sd.CallbackStop
@@ -90,11 +98,13 @@ class VoiceLoop:
                 raise sd.CallbackStop
 
             if self._show_vad:
-                if prob > 0.05:
-                    bar = "█" * int(prob * 20)
-                    print(f"\r  VAD: {prob:.2f} {bar}", end="", flush=True)
+                if speech_from_vad or speech_from_energy:
+                    bar = "█" * int(min(prob * 20, 40))
+                    print(f"\r  Voz: {prob:.2f} rms:{rms:.4f} piso:{noise_floor:.4f} {bar}", end="", flush=True)
                 elif not speech_active:
                     print("\r  Escuchando...   ", end="", flush=True)
+                else:
+                    print(f"\r  Silencio... {silence_frames}/{max_silence}  ", end="", flush=True)
 
         print("  Escuchando...", end="", flush=True)
         input_kwargs = dict(samplerate=SAMPLE_RATE, channels=1, blocksize=BLOCK_SIZE, callback=callback)
