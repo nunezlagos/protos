@@ -19,7 +19,8 @@ class AudioPreprocessor:
     def process(
         self, mic_audio: np.ndarray, playback_ref: np.ndarray | None = None
     ) -> tuple[np.ndarray, float]:
-        clean = self._ap.process(mic_audio, playback_ref)
+        far = playback_ref if playback_ref is not None else np.zeros_like(mic_audio)
+        clean = self._ap.process(mic_audio, far)
         return clean, self._ap.speech_probability
 
     @property
