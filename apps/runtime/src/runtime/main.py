@@ -75,7 +75,7 @@ class VoiceLoop:
                 speech_active = True
                 has_any_speech = True
                 silence_frames = 0
-            elif not speech_active and total_frames > int(3 * SAMPLE_RATE / BLOCK_SIZE) and rms > 0.002:
+            elif not speech_active and total_frames > int(3 * SAMPLE_RATE / BLOCK_SIZE) and rms > 0.005:
                 speech_active = True
                 has_any_speech = True
                 silence_frames = 0
