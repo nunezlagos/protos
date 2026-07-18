@@ -135,24 +135,29 @@ class TestKokoroEngine:
 
 
 class TestInstallScript:
-    def test_shellcheck_passes(self):
-        script = Path(__file__).parent.parent / "install.sh"
-        assert script.exists()
+    ROOT = Path(__file__).parent.parent.parent.parent
 
-        result = subprocess.run(
-            ["bash", "-n", str(script)],
-            capture_output=True, text=True,
-        )
-        assert result.returncode == 0, (
-            f"Syntax error:\n{result.stderr}"
-        )
+    def test_shellcheck_passes(self):
+        scripts = list(self.ROOT.glob("scripts/**/*.sh"))
+        assert len(scripts) >= 3
+        for s in scripts:
+            result = subprocess.run(
+                ["bash", "-n", str(s)],
+                capture_output=True, text=True,
+            )
+            assert result.returncode == 0, (
+                f"Syntax error in {s.name}:\n{result.stderr}"
+            )
 
     def test_lib_files_exist(self):
-        lib_dir = Path(__file__).parent.parent / "lib"
+        lib_dir = self.ROOT / "scripts" / "lib"
         expected = {"common.sh", "os.sh", "pkg.sh", "kokoro.sh"}
         found = {f.name for f in lib_dir.glob("*.sh")}
         missing = expected - found
         assert not missing, f"Missing: {missing}"
+
+    def test_root_install_sh_exists(self):
+        assert (self.ROOT / "install.sh").exists()
 
     def test_env_has_language_var(self):
         env_file = Path.home() / ".config" / "kokoro-runtime" / "env"
