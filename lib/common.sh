@@ -17,7 +17,7 @@ log_step()  { printf "\n${CYAN}━━━ %s ━━━${NC}\n" "$*"; }
 require_cmd() {
   local cmd="$1"
   if ! command -v "${cmd}" &>/dev/null; then
-    log_fail "${cmd} no encontrado — instalalo y volvé a ejecutar"
+    log_fail "${cmd} not found — install it and re-run"
   fi
 }
 
@@ -26,6 +26,6 @@ require_sudo() {
     SUDO=""
     return
   fi
-  command -v sudo &>/dev/null || log_fail "sudo no instalado. Ejecutá como root o instalá sudo."
+  command -v sudo &>/dev/null || log_fail "sudo not found. Run as root or install sudo."
   SUDO="sudo"
 }

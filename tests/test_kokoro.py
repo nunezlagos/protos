@@ -1,4 +1,4 @@
-"""Tests para Kokoro TTS (TDD: Red → Green → Refactor → Sabotaje)."""
+"""Kokoro TTS tests (Red -> Green -> Refactor -> Sabotage)."""
 
 import os
 import subprocess
@@ -9,6 +9,8 @@ from pathlib import Path
 KOKORO_DIR = Path.home() / ".local" / "share" / "kokoro"
 KOKORO_MODEL = KOKORO_DIR / "kokoro-v1.0.onnx"
 KOKORO_VOICES = KOKORO_DIR / "voices-v1.0.bin"
+
+SKIP_REASON = "Kokoro not installed. Run: pip install kokoro-onnx"
 
 
 def kokoro_available() -> bool:
@@ -25,34 +27,25 @@ def models_downloaded() -> bool:
 
 class TestKokoroInstall:
     def test_pip_package_installed(self):
-        assert kokoro_available(), (
-            "kokoro-onnx no instalado. "
-            "Corré: pip install kokoro-onnx"
-        )
+        assert kokoro_available(), SKIP_REASON
 
     def test_model_files_exist(self):
-        assert KOKORO_MODEL.exists(), (
-            f"Modelo no encontrado: {KOKORO_MODEL}"
-        )
-        assert KOKORO_VOICES.exists(), (
-            f"Voices no encontrado: {KOKORO_VOICES}"
-        )
+        assert KOKORO_MODEL.exists(), f"Model not found: {KOKORO_MODEL}"
+        assert KOKORO_VOICES.exists(), f"Voices not found: {KOKORO_VOICES}"
 
     def test_model_size(self):
         size_mb = KOKORO_MODEL.stat().st_size / (1024 * 1024)
-        assert 50 < size_mb < 500, (
-            f"Tamaño de modelo inesperado: {size_mb:.0f}MB"
-        )
+        assert 50 < size_mb < 500, f"Unexpected model size: {size_mb:.0f}MB"
 
 
 class TestKokoroTTS:
     def test_generates_audio(self):
         if not (kokoro_available() and models_downloaded()):
-            pytest.skip("Kokoro no instalado")  # noqa
+            pytest.skip(SKIP_REASON)  # noqa
         from kokoro_onnx import Kokoro
 
         kokoro = Kokoro(str(KOKORO_MODEL), str(KOKORO_VOICES))
-        samples, sr = kokoro.create("Hola mundo.", voice="af_sarah")
+        samples, sr = kokoro.create("Hello world.", voice="af_sarah")
 
         assert sr == 24000
         assert len(samples) > 0
@@ -60,7 +53,7 @@ class TestKokoroTTS:
 
     def test_saves_wav(self):
         if not (kokoro_available() and models_downloaded()):
-            pytest.skip("Kokoro no instalado")  # noqa
+            pytest.skip(SKIP_REASON)  # noqa
         from kokoro_onnx import Kokoro
         import soundfile as sf
 
@@ -76,7 +69,7 @@ class TestKokoroTTS:
 
     def test_streaming_chunks(self):
         if not (kokoro_available() and models_downloaded()):
-            pytest.skip("Kokoro no instalado")  # noqa
+            pytest.skip(SKIP_REASON)  # noqa
         import asyncio
         from kokoro_onnx import Kokoro
 
@@ -85,7 +78,7 @@ class TestKokoroTTS:
         async def run():
             chunks = []
             stream = kokoro.create_stream(
-                "Esto es una prueba de streaming prolongado.",
+                "This is a streaming test.",
                 voice="af_sarah",
                 speed=1.0,
                 lang="en-us",
@@ -97,6 +90,23 @@ class TestKokoroTTS:
         chunks = asyncio.run(run())
         assert len(chunks) >= 1
         assert all(c > 0 for c in chunks)
+
+
+class TestKokoroLanguage:
+    def test_lang_config_reads_env(self):
+        from src.kokoro.engine import DEFAULT_LANG  # noqa
+        assert DEFAULT_LANG == "en-us"
+
+    def test_engine_accepts_custom_lang(self):
+        from src.kokoro.engine import KokoroEngine
+        engine = KokoroEngine(lang="es")
+        assert engine.lang == "es"
+
+    def test_engine_lang_setter(self):
+        from src.kokoro.engine import KokoroEngine
+        engine = KokoroEngine()
+        engine.lang = "fr"
+        assert engine.lang == "fr"
 
 
 class TestInstallScript:
@@ -117,4 +127,11 @@ class TestInstallScript:
         expected = {"common.sh", "os.sh", "pkg.sh", "kokoro.sh"}
         found = {f.name for f in lib_dir.glob("*.sh")}
         missing = expected - found
-        assert not missing, f"Faltan: {missing}"
+        assert not missing, f"Missing: {missing}"
+
+    def test_env_has_language_var(self):
+        env_file = Path.home() / ".config" / "kokoro-runtime" / "env"
+        if not env_file.exists():
+            pytest.skip("Env file not created yet")  # noqa
+        content = env_file.read_text()
+        assert "KOKORO_LANGUAGE=" in content
