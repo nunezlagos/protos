@@ -21,6 +21,13 @@ SAMPLE_RATE = AudioPreprocessor.SAMPLE_RATE
 BLOCK_SIZE = 320
 
 
+def _list_audio_devices():
+    for d in sd.query_devices():
+        if d["max_input_channels"] > 0:
+            print(f"    {d['index']}: {d['name']}")
+    print(f"  Default: {sd.default.device[0]}")
+
+
 class VoiceLoop:
     def __init__(self):
         self._preprocessor = AudioPreprocessor()
@@ -30,6 +37,7 @@ class VoiceLoop:
         self._history = HistoryWindow()
         self._barge_in = BargeInLayer(self._preprocessor)
         self._running = True
+        self._show_vad = False
 
     def _record_until_speech_end(self) -> np.ndarray:
         frames: list[np.ndarray] = []
@@ -55,6 +63,11 @@ class VoiceLoop:
                 if silence_frames >= max_silence:
                     raise sd.CallbackStop
 
+            if self._show_vad and prob > 0.1:
+                bar = "█" * int(prob * 20)
+                print(f"\r  VAD: {prob:.2f} {bar}", end="", flush=True)
+
+        print("  Escuchando... ", end="", flush=True)
         try:
             with sd.InputStream(
                 samplerate=SAMPLE_RATE, channels=1, blocksize=BLOCK_SIZE, callback=callback
@@ -63,6 +76,7 @@ class VoiceLoop:
                     sd.sleep(50)
         except sd.CallbackStop:
             pass
+        print()
 
         if not has_any_speech or not frames:
             return np.array([], dtype=np.float32)
@@ -99,6 +113,11 @@ class VoiceLoop:
 
         print("Protos runtime iniciado. Habla cuando quieras (Ctrl+C para salir).")
         print("-" * 50)
+        print("Audio devices:")
+        _list_audio_devices()
+        print()
+
+        self._show_vad = True
 
         while self._running:
             try:
