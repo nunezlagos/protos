@@ -1,7 +1,11 @@
-.PHONY: install test lint fmt
+.PHONY: install install-all test test-all lint fmt run
 
 install:
 	./scripts/install.sh
+
+install-all: install
+	pip install -e libs/kokoro
+	pip install -e apps/runtime
 
 test:
 	cd libs/kokoro && python -m pytest tests/ -v
@@ -14,3 +18,6 @@ lint:
 
 fmt:
 	ruff format libs/ apps/ 2>/dev/null || true
+
+run:
+	cd apps/runtime && python -m runtime.main

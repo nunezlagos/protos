@@ -1,0 +1,14 @@
+schema: spec-driven
+domain:
+  issue_id: 942707c6-a0db-4e45-a03d-b9d92aad64d4
+  issue_slug: issue-00.1-voice-loop-natural
+  req: REQ-00-voice-runtime
+  status: active
+  priority: high
+  proposal_version: 2
+  design_version: 2
+hashes:
+  "proposal.md": 017a65782f947cf288a2c090c59be909f00a14a6c130ce58d8c7438461189904
+  "design.md": a6586f5b6031e3c60e65fd6a5e9ddcc05bead534d46a49734357c38e8da92e46
+  "tasks.md": 88da7c762c85208a254ea6d42b370820a1c7589ac9ad1f01031f9e7ac8be1b5d
+  "specs/issue-00.1-voice-loop-natural/spec.md": 066a60167d8b56aa3002a239759834b6356c3d05c78d3928fb3e308849130f32
