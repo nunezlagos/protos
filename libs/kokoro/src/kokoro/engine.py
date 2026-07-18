@@ -45,9 +45,18 @@ class KokoroEngine:
         return samples, sample_rate
 
     def speak_stream(self, text, voice=None, lang=None, speed=None):
-        return self._kokoro.create_stream(
-            text,
-            voice=voice or DEFAULT_VOICE,
-            speed=speed if speed is not None else self._speed,
-            lang=lang or self._lang,
-        )
+        import asyncio
+
+        async def _collect():
+            chunks = []
+            async for chunk in self._kokoro.create_stream(
+                text,
+                voice=voice or DEFAULT_VOICE,
+                speed=speed if speed is not None else self._speed,
+                lang=lang or self._lang,
+            ):
+                chunks.append(chunk)
+            return chunks
+
+        chunks = asyncio.run(_collect())
+        yield from chunks
