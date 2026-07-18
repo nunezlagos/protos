@@ -102,8 +102,11 @@ class VoiceLoop:
             pass
         print()
 
+        dur = len(frames) * BLOCK_SIZE / SAMPLE_RATE if frames else 0
         if not has_any_speech or not frames:
+            print(f"  (no speech detected, {dur:.1f}s)")
             return np.array([], dtype=np.float32)
+        print(f"  (speech: {dur:.1f}s)")
         return np.concatenate(frames).flatten()
 
     def _play_stream_with_bargein(self, tts_stream):
