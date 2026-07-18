@@ -71,7 +71,7 @@ class VoiceLoop:
 
             rms = np.sqrt(np.mean(indata.flatten() ** 2))
 
-            if prob > VAD_THRESHOLD or rms > 0.02:
+            if prob > VAD_THRESHOLD or rms > 0.03:
                 speech_active = True
                 has_any_speech = True
                 silence_frames = 0
@@ -159,6 +159,9 @@ class VoiceLoop:
                 if len(audio) < SAMPLE_RATE * 0.3:
                     continue
 
+                dur = len(audio) / SAMPLE_RATE
+                rms = np.sqrt(np.mean(audio ** 2))
+                print(f"\n  Audio: {dur:.1f}s, RMS: {rms:.4f}")
                 print("  Transcribiendo...", end=" ", flush=True)
                 text = self._stt.transcribe(audio).strip()
                 if not text:
