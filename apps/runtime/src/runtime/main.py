@@ -55,7 +55,7 @@ class VoiceLoop:
         frames: list[np.ndarray] = []
         speech_active = False
         silence_frames = 0
-        max_silence = int(0.8 * SAMPLE_RATE / BLOCK_SIZE)
+        max_silence = int(1.5 * SAMPLE_RATE / BLOCK_SIZE)
         has_any_speech = False
         max_total = int(MAX_RECORD_SEC * SAMPLE_RATE / BLOCK_SIZE)
         total_frames = 0
@@ -77,7 +77,7 @@ class VoiceLoop:
             noise_floor = min_rms * 2.5 if min_rms < 0.01 else min_rms
 
             speech_from_vad = prob > VAD_THRESHOLD
-            speech_from_energy = rms > noise_floor * 2
+            speech_from_energy = rms > noise_floor * 1.5
 
             if speech_from_vad or speech_from_energy:
                 speech_active = True
