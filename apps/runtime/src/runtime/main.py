@@ -71,7 +71,7 @@ class VoiceLoop:
             frames.append(clean.copy())
             total_frames += 1
 
-            rms = np.sqrt(np.mean(indata.flatten() ** 2))
+            rms = np.sqrt(np.mean(clean ** 2))
             if noise_floor > 0.001 and rms < noise_floor:
                 noise_floor = noise_floor * 0.9 + rms * 0.1
             elif noise_floor <= 0.001:

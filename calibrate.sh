@@ -4,9 +4,6 @@ set -euo pipefail
 
 NC='\033[0m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'
 log()  { printf "  %s\n" "$*"; }
-ok()   { printf "${GREEN}  ✓ %s${NC}\n" "$*"; }
-info() { printf "${CYAN}  · %s${NC}\n" "$*"; }
-warn() { printf "${YELLOW}  ! %s${NC}\n" "$*"; }
 
 cd "$(dirname "$0")"
 PYTHON="python3"
@@ -15,97 +12,95 @@ PYTHON="python3"
 ${PYTHON} << 'PYEOF'
 import sounddevice as sd
 import numpy as np
-import time
+import sys
 
-SR = 48000  # use common rate, let PortAudio resample
-BLOCK = 3   # seconds
-
-def measure(device, desc):
-    try:
-        info = sd.query_devices(device)
-        sr = int(info['default_samplerate'])
-        audio = sd.rec(int(BLOCK * sr), samplerate=sr, channels=1,
-                       device=device, blocking=True)
-        rms = float(np.sqrt(np.mean(audio ** 2)))
-        peak = float(np.max(np.abs(audio)))
-        return rms, peak
-    except Exception as e:
-        return None, str(e)
-
-print()
-print("  " + "-" * 50)
-print("  INPUT DEVICES")
-print("  " + "-" * 50)
-inputs = [(i, d) for i, d in enumerate(sd.query_devices()) if d['max_input_channels'] > 0]
-for idx, dev in inputs:
-    name = dev['name']
-    rms, peak = measure(idx, 'input')
-    if rms is not None and rms > 0:
-        db = 20 * np.log10(rms + 1e-10)
-        bar = "█" * int(min(rms * 500, 40))
-        print(f"    {idx:>2}: {name}")
-        print(f"         noise: {rms:.4f} RMS ({db:.0f} dB)  {bar}")
-    else:
-        print(f"    {idx:>2}: {name}  (skip)")
+def measure(device, seconds, label):
+    info = sd.query_devices(device)
+    sr = int(info['default_samplerate'])
+    frames = int(seconds * sr)
+    print(f"  {label} ({seconds}s)...", end=" ", flush=True)
+    audio = sd.rec(frames, samplerate=sr, channels=1, device=device, blocking=True)
+    rms = float(np.sqrt(np.mean(audio ** 2)))
+    peak = float(np.max(np.abs(audio)))
+    db = 20 * np.log10(rms + 1e-10)
+    bar = "█" * int(min(rms * 800, 40))
+    print(f"{rms:.4f} RMS ({db:.0f} dB)  {bar}")
+    return rms, peak, audio.flatten()
 
 default_in = sd.default.device[0]
-print()
-print("  " + "-" * 50)
-print("  CALIBRATION (default input)")
-print("  " + "-" * 50)
-
-try:
-    info = sd.query_devices(default_in)
-    sr = int(info['default_samplerate'])
-    print(f"  Device: {default_in} ({info['name']}) @ {sr} Hz")
-
-    print("  >>> Call 3s for noise measurement...")
-    noise = sd.rec(int(BLOCK * sr), samplerate=sr, channels=1,
-                   device=default_in, blocking=True)
-    noise_rms = float(np.sqrt(np.mean(noise ** 2)))
-    noise_db = 20 * np.log10(noise_rms + 1e-10) if noise_rms > 0 else -100
-    print(f"  Noise floor: {noise_rms:.4f} RMS ({noise_db:.0f} dB)")
-
-    print("  >>> Now speak normally for 3s...")
-    speech = sd.rec(int(BLOCK * sr), samplerate=sr, channels=1,
-                    device=default_in, blocking=True)
-    speech_rms = float(np.sqrt(np.mean(speech ** 2)))
-    speech_db = 20 * np.log10(speech_rms + 1e-10) if speech_rms > 0 else -100
-    print(f"  Speech level: {speech_rms:.4f} RMS ({speech_db:.0f} dB)")
-
-    snr = speech_db - noise_db if abs(noise_db) < 100 else 0
-    ratio = speech_rms / max(noise_rms, 0.0001)
-
-    print()
-    print("  " + "-" * 50)
-    print("  RESULT")
-    print("  " + "-" * 50)
-    print(f"  SNR: {snr:.0f} dB  |  Signal ratio: {ratio:.1f}x")
-
-    if ratio < 2:
-        print("  ⚠  Very quiet. Move closer to mic or increase gain.")
-    elif ratio < 5:
-        print("  ⚠  Quiet but usable. Consider USB headset for better quality.")
-    else:
-        print("  ✓  Good signal level.")
-
-    vad = "0.04"
-    if ratio > 20:
-        vad = "0.08"
-    elif ratio < 3:
-        vad = "0.02"
-
-    print()
-    print("  Recommended .env settings:")
-    print(f'    PROTOS_VAD_THRESHOLD={vad}')
-    print(f'    # PROTOS_INPUT_DEVICE={default_in}  # uncomment to force')
-    print(f'    # PROTOS_OUTPUT_DEVICE=<number>')
-
-except Exception as e:
-    print(f"  Error: {e}")
+info = sd.query_devices(default_in)
+sr = int(info['default_samplerate'])
 
 print()
-print("  Output devices (for PROTOS_OUTPUT_DEVICE):")
+print("  Protos Audio Calibration")
+print("  " + "-" * 50)
+print(f"  Input:  device {default_in} ({info['name']}) @ {sr} Hz")
+print(f"  Output: device {sd.default.device[1]}")
+print("  " + "-" * 50)
+
+# 1) Pure silence
+input("  [ENTER] when ready (silence)...")
+noise_rms, _, _ = measure(default_in, 3, "  Silence")
+
+# 2) Whisper
+input("  [ENTER] then whisper: 'uno dos tres...'")
+whisper_rms, _, _ = measure(default_in, 2, "  Whisper")
+
+# 3) Normal voice
+input("  [ENTER] then say NORMAL: 'Hola Protos, esta es mi voz normal'")
+norm_rms, _, _ = measure(default_in, 3, "  Normal")
+
+# 4) Loud
+input("  [ENTER] then say LOUD: 'HOLA PROTOS! FUNCIONA EL MICROFONO!'")
+loud_rms, _, _ = measure(default_in, 2, "  Loud")
+
+# 5) Background noise
+input("  [ENTER] and stay silent 3s with ambient noise...")
+ambient_rms, _, _ = measure(default_in, 3, "  Ambient")
+
+print()
+print("  " + "-" * 50)
+print("  RESULTS")
+print("  " + "-" * 50)
+print(f"  Noise floor: {noise_rms:.4f}")
+print(f"  Whisper:     {whisper_rms:.4f}")
+print(f"  Normal:      {norm_rms:.4f}")
+print(f"  Loud:        {loud_rms:.4f}")
+print(f"  Ambient:     {ambient_rms:.4f}")
+
+# Optimal thresholds
+noise_floor = min(noise_rms, ambient_rms)
+speech_floor = max(whisper_rms, norm_rms * 0.3)
+
+vad = "0.04"
+ratio = norm_rms / max(noise_floor, 0.0001)
+if ratio > 15:
+    vad = "0.08"
+elif ratio > 8:
+    vad = "0.06"
+elif ratio < 3:
+    vad = "0.02"
+
+energy_gate = max(noise_floor * 1.8, 0.003)
+silence_gate = noise_floor * 2.5
+
+print()
+print("  " + "-" * 50)
+print("  RECOMMENDED .env")
+print("  " + "-" * 50)
+print(f"  PROTOS_VAD_THRESHOLD={vad}")
+print(f"  # PROTOS_MAX_RECORD_SEC=5")
+print(f"  # PROTOS_INPUT_DEVICE={default_in}")
+print(f"  # PROTOS_OUTPUT_DEVICE=<see below>")
+print(f"  # SNR: {20 * np.log10(ratio):.0f} dB  ({ratio:.1f}x)")
+
+if ratio < 2:
+    print("  ⚠  Mic too quiet. Move closer or raise gain.")
+elif ratio < 5:
+    print("  ⚠  Low volume. Usable if quiet environment.")
+
+print()
+print("  Output devices (add to PROTOS_OUTPUT_DEVICE):")
 for i, d in enumerate(sd.query_devices()):
     if d['max_output_channels'] > 0:
         mark = "  ← default" if i == sd.default.device[1] else ""
