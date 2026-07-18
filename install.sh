@@ -155,7 +155,7 @@ EOF
   [ -f ".env" ] || { cp .env.example .env; info "Created .env — set API_LLM before running"; }
   ok "Config"
 
-  ( ${PIP} install -U --quiet kokoro-onnx sounddevice soundfile && ${PIP} install -e libs/kokoro apps/runtime ) &
+  { ${PIP} install -U --quiet kokoro-onnx sounddevice soundfile && ${PIP} install -e libs/kokoro apps/runtime; } &
   spinner $! "Installing Python packages"
 
   ${PYTHON} -c "
