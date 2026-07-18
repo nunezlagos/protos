@@ -61,7 +61,6 @@ pkg_install() {
 REPO_DIR=""
 clone_or_cd() {
   if [ -f "Makefile" ] && [ -f "install.sh" ] && [ -d "libs" ]; then
-    # Already in the repo
     REPO_DIR="$(pwd)"
     log_ok "Using current directory: ${REPO_DIR}"
     return
@@ -77,6 +76,34 @@ clone_or_cd() {
 
   REPO_DIR="${target}"
   cd "${REPO_DIR}"
+}
+
+# ─── Virtualenv ─────────────────────────────────────────────────────
+VENV_DIR="${REPO_DIR}/venv"
+PYTHON="python3"
+
+ensure_venv() {
+  # PEP 668: check if system pip is blocked
+  if python3 -m pip install --dry-run --quiet 2>/dev/null; then
+    PIP="python3 -m pip"
+    PYTHON="python3"
+    log_ok "Using system pip"
+    return
+  fi
+
+  # Check --break-system-packages availability
+  if python3 -m pip install --dry-run --break-system-packages --quiet 2>/dev/null; then
+    PIP="python3 -m pip --break-system-packages"
+    PYTHON="python3"
+    log_warn "Using pip --break-system-packages"
+    return
+  fi
+
+  log_info "PEP 668 detected — creating virtualenv..."
+  python3 -m venv "${VENV_DIR}" --clear
+  PIP="${VENV_DIR}/bin/pip"
+  PYTHON="${VENV_DIR}/bin/python"
+  log_ok "Virtualenv created: ${VENV_DIR}"
 }
 
 # ─── Steps ──────────────────────────────────────────────────────────
@@ -150,11 +177,11 @@ step_python_packages() {
   log_step "Python packages"
 
   log_info "Installing kokoro-onnx..."
-  pip install -U --quiet kokoro-onnx sounddevice soundfile
+  ${PIP} install -U --quiet kokoro-onnx sounddevice soundfile
 
   log_info "Installing protos packages..."
-  pip install -e libs/kokoro
-  pip install -e apps/runtime
+  ${PIP} install -e libs/kokoro
+  ${PIP} install -e apps/runtime
 
   log_ok "All Python packages installed"
 }
@@ -162,7 +189,7 @@ step_python_packages() {
 step_kokoro_test() {
   log_step "Kokoro test"
   log_info "Generating test audio..."
-  python3 - <<-PYEOF 2>&1
+  ${PYTHON} - <<-PYEOF 2>&1
 from kokoro_onnx import Kokoro
 import soundfile as sf
 kokoro = Kokoro(
@@ -186,6 +213,7 @@ main() {
 EOF
 
   clone_or_cd
+  ensure_venv
 
   step_system_deps
   step_kokoro_models
@@ -193,6 +221,11 @@ EOF
   step_project_env
   step_python_packages
   step_kokoro_test
+
+  local source_cmd=""
+  if [ -f "${VENV_DIR}/bin/activate" ]; then
+    source_cmd="source ${VENV_DIR}/bin/activate && "
+  fi
 
   cat <<-EOF
 
@@ -205,8 +238,8 @@ EOF
 
   Next:
     cd ${REPO_DIR}
-    vim .env      # set API_LLM
-    make run      # start voice loop
+    ${source_cmd}vim .env      # set API_LLM
+    ${source_cmd}make run      # start voice loop
   ──────────────────────────────────────
 EOF
 }
