@@ -83,7 +83,34 @@ ensure_venv() {
     return
   done
 
-  fail "No compatible Python found (kokoro-onnx needs 3.10-3.13). Install one (e.g. python3.12) and re-run."
+  # Auto-install based on distro
+  local pm; pm="$(os_pkg_manager)"
+  case "${pm}" in
+    pacman)
+      command -v yay &>/dev/null || fail "Install yay, then: yay -S python312"
+      info "Installing python312 via yay..."
+      yay -S --noconfirm python312
+      python3.12 -m venv "${VENV_DIR}" --clear
+      PIP="${VENV_DIR}/bin/pip"; PYTHON="${VENV_DIR}/bin/python"
+      return
+      ;;
+    apt)
+      sudo apt install -y python3.12 python3.12-venv 2>/dev/null && {
+        python3.12 -m venv "${VENV_DIR}" --clear
+        PIP="${VENV_DIR}/bin/pip"; PYTHON="${VENV_DIR}/bin/python"
+        return
+      }
+      ;;
+    dnf)
+      sudo dnf install -y python3.12 2>/dev/null && {
+        python3.12 -m venv "${VENV_DIR}" --clear
+        PIP="${VENV_DIR}/bin/pip"; PYTHON="${VENV_DIR}/bin/python"
+        return
+      }
+      ;;
+  esac
+
+  fail "No compatible Python found (kokoro-onnx needs 3.10-3.13). Install python3.12 and re-run."
 }
 
 main() {
