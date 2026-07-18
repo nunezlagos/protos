@@ -3,6 +3,9 @@
 import signal
 import sys
 import threading
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import numpy as np
 import sounddevice as sd
