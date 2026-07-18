@@ -92,21 +92,46 @@ class TestKokoroTTS:
         assert all(c > 0 for c in chunks)
 
 
-class TestKokoroLanguage:
-    def test_lang_config_reads_env(self):
-        from src.kokoro.engine import DEFAULT_LANG  # noqa
+class TestKokoroDefaults:
+    def test_default_lang(self):
+        from src.kokoro.engine import DEFAULT_LANG
         assert DEFAULT_LANG == "en-us"
 
-    def test_engine_accepts_custom_lang(self):
+    def test_default_speed(self):
+        from src.kokoro.engine import DEFAULT_SPEED
+        assert DEFAULT_SPEED == 1.0
+
+
+class TestKokoroEngine:
+    def test_custom_lang(self):
         from src.kokoro.engine import KokoroEngine
         engine = KokoroEngine(lang="es")
         assert engine.lang == "es"
 
-    def test_engine_lang_setter(self):
+    def test_lang_setter(self):
         from src.kokoro.engine import KokoroEngine
         engine = KokoroEngine()
         engine.lang = "fr"
         assert engine.lang == "fr"
+
+    def test_custom_speed(self):
+        from src.kokoro.engine import KokoroEngine
+        engine = KokoroEngine(speed=0.8)
+        assert engine.speed == 0.8
+
+    def test_speed_setter(self):
+        from src.kokoro.engine import KokoroEngine
+        engine = KokoroEngine()
+        engine.speed = 1.5
+        assert engine.speed == 1.5
+
+    def test_custom_voice(self):
+        from src.kokoro.engine import KokoroEngine
+        engine = KokoroEngine()
+        import os
+        os.environ["KOKORO_VOICE_DEFAULT"] = "af_nicole"
+        from src.kokoro.engine import DEFAULT_VOICE
+        assert DEFAULT_VOICE == "af_nicole"
 
 
 class TestInstallScript:

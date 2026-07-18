@@ -87,10 +87,20 @@ kokoro_write_env() {
   fi
 
   cat > "${env_path}" <<-EOF
+# Kokoro TTS configuration
+# Uncomment and edit to override defaults
+
 KOKORO_MODEL="${KOKORO_DIR}/kokoro-${KOKORO_TAG}.onnx"
 KOKORO_VOICES="${KOKORO_DIR}/voices-${KOKORO_TAG}.bin"
+
+# Voice: af_sarah, af_nicole, af_bella, af_heart, am_michael, am_fenrir, etc.
 KOKORO_VOICE_DEFAULT="af_sarah"
+
+# Language: en-us, en-gb, es, fr, pt, it, ja, zh, hi, ko
 KOKORO_LANGUAGE="en-us"
+
+# Speech speed: 0.5 (slow) to 2.0 (fast), default 1.0
+# KOKORO_SPEED="1.0"
 EOF
 
   log_ok "Env created: ${env_path}"

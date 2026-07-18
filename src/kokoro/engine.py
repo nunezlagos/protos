@@ -7,15 +7,17 @@ KOKORO_MODEL = os.getenv("KOKORO_MODEL", str(KOKORO_DIR / "kokoro-v1.0.onnx"))
 KOKORO_VOICES = os.getenv("KOKORO_VOICES", str(KOKORO_DIR / "voices-v1.0.bin"))
 DEFAULT_VOICE = os.getenv("KOKORO_VOICE_DEFAULT", "af_sarah")
 DEFAULT_LANG = os.getenv("KOKORO_LANGUAGE", "en-us")
+DEFAULT_SPEED = float(os.getenv("KOKORO_SPEED", "1.0"))
 
 
 class KokoroEngine:
-    def __init__(self, model_path=None, voices_path=None, lang=None):
+    def __init__(self, model_path=None, voices_path=None, lang=None, speed=None):
         from kokoro_onnx import Kokoro as KokoroLib
 
         self._model_path = model_path or KOKORO_MODEL
         self._voices_path = voices_path or KOKORO_VOICES
         self._lang = lang or DEFAULT_LANG
+        self._speed = speed if speed is not None else DEFAULT_SPEED
         self._kokoro = KokoroLib(self._model_path, self._voices_path)
 
     @property
@@ -26,18 +28,26 @@ class KokoroEngine:
     def lang(self, value):
         self._lang = value
 
-    def speak(self, text, voice=None, lang=None):
+    @property
+    def speed(self):
+        return self._speed
+
+    @speed.setter
+    def speed(self, value):
+        self._speed = value
+
+    def speak(self, text, voice=None, lang=None, speed=None):
         samples, sample_rate = self._kokoro.create(
             text,
             voice=voice or DEFAULT_VOICE,
-            speed=1.0,
+            speed=speed if speed is not None else self._speed,
         )
         return samples, sample_rate
 
-    def speak_stream(self, text, voice=None, lang=None):
+    def speak_stream(self, text, voice=None, lang=None, speed=None):
         return self._kokoro.create_stream(
             text,
             voice=voice or DEFAULT_VOICE,
-            speed=1.0,
+            speed=speed if speed is not None else self._speed,
             lang=lang or self._lang,
         )
