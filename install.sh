@@ -38,6 +38,8 @@ pkg_install() {
 }
 
 REPO_DIR=""
+PYTHON="python3"; PIP="python3 -m pip"; VENV_DIR=""
+
 clone_or_cd() {
   if [ -f "Makefile" ] && [ -f "install.sh" ] && [ -d "libs" ]; then
     REPO_DIR="$(pwd)"; return
@@ -47,8 +49,8 @@ clone_or_cd() {
   REPO_DIR="${t}"; cd "${REPO_DIR}"
 }
 
-VENV_DIR="${REPO_DIR}/venv"; PYTHON="python3"; PIP="python3 -m pip"
 ensure_venv() {
+  VENV_DIR="${REPO_DIR}/venv"
   python3 -m pip install --dry-run --quiet 2>/dev/null && return
   python3 -m pip install --dry-run --break-system-packages --quiet 2>/dev/null && { PIP="python3 -m pip --break-system-packages"; return; }
   info "Creating virtualenv..."
@@ -105,7 +107,7 @@ sf.write('/tmp/kokoro-test.wav', s, r)
 print(f'  ✓ Test audio: /tmp/kokoro-test.wav ({len(s)/r:.1f}s)')" 2>&1 | tail -1
 
   local s=""
-  [ -f "${VENV_DIR}/bin/activate" ] && s="source ${VENV_DIR}/bin/activate && "
+  [ -n "${VENV_DIR}" ] && [ -f "${VENV_DIR}/bin/activate" ] && s="source ${VENV_DIR}/bin/activate && "
   echo
   log "Done — cd ${REPO_DIR} && ${s}make run"
 }
