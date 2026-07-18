@@ -4,26 +4,15 @@
 #   ./install.sh: installs from current repo
 set -euo pipefail
 
-NC='\033[0m'; RED='\033[0;31m'; GREEN='\033[0;32m'
-YELLOW='\033[1;33m'; CYAN='\033[0;36m'
+NC='\033[0m'; RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'
 
-log_info()  { printf "${CYAN}   i %s${NC}\n" "$*"; }
-log_ok()    { printf "${GREEN}   v %s${NC}\n" "$*"; }
-log_warn()  { printf "${YELLOW}   ! %s${NC}\n" "$*"; }
-log_fail()  { printf "${RED}   x %s${NC}\n" "$*"; exit 1; }
-log_step()  { printf "\n${CYAN}--- %s ---${NC}\n" "$*"; }
+log()   { printf "  %s\n" "$*"; }
+ok()    { printf "${GREEN}  ✓ %s${NC}\n" "$*"; }
+info()  { printf "${CYAN}  · %s${NC}\n" "$*"; }
+fail()  { printf "${RED}  ✗ %s${NC}\n" "$*"; exit 1; }
 
-# ─── OS helpers ─────────────────────────────────────────────────────
-os_id() {
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release; printf "%s" "${ID}"
-  else printf "unknown"; fi
-}
-os_pretty_name() {
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release; printf "%s" "${PRETTY_NAME:-${ID}}"
-  else printf "unknown"; fi
-}
+os_id()           { . /etc/os-release &>/dev/null && printf "%s" "${ID}" || printf "unknown"; }
+os_pretty_name()  { . /etc/os-release &>/dev/null && printf "%s" "${PRETTY_NAME:-${ID}}" || printf "unknown"; }
 os_pkg_manager() {
   local id; id="$(os_id)"
   case "${id}" in
@@ -33,16 +22,8 @@ os_pkg_manager() {
     opensuse*|suse)            printf "zypper" ;;
     alpine)                    printf "apk" ;;
     *)
-      if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        case "${ID_LIKE}" in
-          *arch*)   printf "pacman" ;;
-          *debian*) printf "apt" ;;
-          *fedora*) printf "dnf" ;;
-          *)        printf "unknown" ;;
-        esac
-      else printf "unknown"; fi
-      ;;
+      . /etc/os-release 2>/dev/null
+      case "${ID_LIKE}" in *arch*) printf "pacman" ;; *debian*) printf "apt" ;; *fedora*) printf "dnf" ;; *) printf "unknown" ;; esac ;;
   esac
 }
 pkg_install() {
@@ -53,195 +34,80 @@ pkg_install() {
     dnf)    sudo dnf install -y "$@" >/dev/null 2>&1 ;;
     zypper) sudo zypper --non-interactive install "$@" >/dev/null 2>&1 ;;
     apk)    sudo apk add --no-cache "$@" >/dev/null 2>&1 ;;
-    *)      log_fail "Package manager '${m}' not supported" ;;
   esac
 }
 
-# ─── Repo setup ─────────────────────────────────────────────────────
 REPO_DIR=""
 clone_or_cd() {
   if [ -f "Makefile" ] && [ -f "install.sh" ] && [ -d "libs" ]; then
-    REPO_DIR="$(pwd)"
-    log_ok "Using current directory: ${REPO_DIR}"
-    return
+    REPO_DIR="$(pwd)"; return
   fi
-
-  local target="${HOME}/protos"
-  if [ -d "${target}" ]; then
-    log_info "Protos already cloned in ${target}"
-  else
-    log_info "Cloning protos into ${target}..."
-    git clone https://github.com/nunezlagos/protos.git "${target}"
-  fi
-
-  REPO_DIR="${target}"
-  cd "${REPO_DIR}"
+  local t="${HOME}/protos"
+  [ -d "${t}" ] || git clone https://github.com/nunezlagos/protos.git "${t}"
+  REPO_DIR="${t}"; cd "${REPO_DIR}"
 }
 
-# ─── Virtualenv ─────────────────────────────────────────────────────
-VENV_DIR="${REPO_DIR}/venv"
-PYTHON="python3"
-
+VENV_DIR="${REPO_DIR}/venv"; PYTHON="python3"; PIP="python3 -m pip"
 ensure_venv() {
-  # PEP 668: check if system pip is blocked
-  if python3 -m pip install --dry-run --quiet 2>/dev/null; then
-    PIP="python3 -m pip"
-    PYTHON="python3"
-    log_ok "Using system pip"
-    return
-  fi
-
-  # Check --break-system-packages availability
-  if python3 -m pip install --dry-run --break-system-packages --quiet 2>/dev/null; then
-    PIP="python3 -m pip --break-system-packages"
-    PYTHON="python3"
-    log_warn "Using pip --break-system-packages"
-    return
-  fi
-
-  log_info "PEP 668 detected — creating virtualenv..."
+  python3 -m pip install --dry-run --quiet 2>/dev/null && return
+  python3 -m pip install --dry-run --break-system-packages --quiet 2>/dev/null && { PIP="python3 -m pip --break-system-packages"; return; }
+  info "Creating virtualenv..."
   python3 -m venv "${VENV_DIR}" --clear
-  PIP="${VENV_DIR}/bin/pip"
-  PYTHON="${VENV_DIR}/bin/python"
-  log_ok "Virtualenv created: ${VENV_DIR}"
+  PIP="${VENV_DIR}/bin/pip"; PYTHON="${VENV_DIR}/bin/python"
 }
 
-# ─── Steps ──────────────────────────────────────────────────────────
-step_system_deps() {
-  log_step "System dependencies"
-  local pm; pm="$(os_pkg_manager)"
-  log_info "OS: $(os_pretty_name)  (${pm})"
+main() {
+  clone_or_cd; ensure_venv
 
+  log "$(os_pretty_name) · Protos installer"
+
+  local pm; pm="$(os_pkg_manager)"
   local deps
   case "${pm}" in
     pacman) deps="espeak-ng python python-pip curl git" ;;
-    apt)    deps="espeak-ng python3 python3-pip curl git" ;;
-    dnf)    deps="espeak-ng python3 python3-pip curl git" ;;
-    zypper) deps="espeak-ng python3 python3-pip curl git" ;;
-    apk)    deps="espeak-ng python3 py3-pip curl git" ;;
+    apt|dnf|zypper) deps="espeak-ng python3 python3-pip curl git" ;;
+    apk) deps="espeak-ng python3 py3-pip curl git" ;;
   esac
-
   pkg_install "${pm}" ${deps}
-  log_ok "System dependencies installed"
-}
+  ok "System deps"
 
-step_kokoro_models() {
-  log_step "Kokoro models"
   local dir="${HOME}/.local/share/kokoro"
   mkdir -p "${dir}"
-
-  local onnx="${dir}/kokoro-v1.0.onnx"
-  local voices="${dir}/voices-v1.0.bin"
-
-  if [ -f "${onnx}" ] && [ -f "${voices}" ]; then
-    log_ok "Models already downloaded in ${dir}"
-    return
+  if [ ! -f "${dir}/kokoro-v1.0.onnx" ] || [ ! -f "${dir}/voices-v1.0.bin" ]; then
+    local b="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+    curl -fSL# -o "${dir}/kokoro-v1.0.onnx" "${b}/kokoro-v1.0.onnx"
+    curl -fSL# -o "${dir}/voices-v1.0.bin" "${b}/voices-v1.0.bin"
   fi
+  ok "Kokoro models"
 
-  local base="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
-  log_info "Downloading models (~170MB)..."
-  curl -fSL# -o "${onnx}"   "${base}/kokoro-v1.0.onnx"
-  curl -fSL# -o "${voices}" "${base}/voices-v1.0.bin"
-  log_ok "Models downloaded to ${dir}"
-}
-
-step_kokoro_env() {
-  log_step "Kokoro env config"
-  local env_path="${HOME}/.config/kokoro-runtime/env"
-  mkdir -p "$(dirname "${env_path}")"
-
-  cat > "${env_path}" <<-EOF
-KOKORO_MODEL=${HOME}/.local/share/kokoro/kokoro-v1.0.onnx
-KOKORO_VOICES=${HOME}/.local/share/kokoro/voices-v1.0.bin
+  mkdir -p "${HOME}/.config/kokoro-runtime"
+  cat > "${HOME}/.config/kokoro-runtime/env" <<-EOF
+KOKORO_MODEL=${dir}/kokoro-v1.0.onnx
+KOKORO_VOICES=${dir}/voices-v1.0.bin
 KOKORO_VOICE_DEFAULT=am_fenrir
 KOKORO_LANGUAGE=es
 KOKORO_SPEED=1.0
 EOF
-  log_ok "Env updated: ${env_path}"
-}
 
-step_project_env() {
-  log_step "Project env"
-  if [ -f ".env" ]; then
-    log_ok ".env already exists — keeping it"
-    return
-  fi
-  if [ -f ".env.example" ]; then
-    cp .env.example .env
-    log_info "Created .env from .env.example"
-    log_warn "Edit .env and set your API_LLM key before running"
-  fi
-}
+  [ -f ".env" ] || { cp .env.example .env; info "Created .env — set API_LLM before running"; }
+  ok "Config"
 
-step_python_packages() {
-  log_step "Python packages"
-
-  log_info "Installing kokoro-onnx..."
   ${PIP} install -U --quiet kokoro-onnx sounddevice soundfile
+  ${PIP} install -e libs/kokoro apps/runtime
+  ok "Python packages"
 
-  log_info "Installing protos packages..."
-  ${PIP} install -e libs/kokoro
-  ${PIP} install -e apps/runtime
-
-  log_ok "All Python packages installed"
-}
-
-step_kokoro_test() {
-  log_step "Kokoro test"
-  log_info "Generating test audio..."
-  ${PYTHON} - <<-PYEOF 2>&1
+  ${PYTHON} -c "
 from kokoro_onnx import Kokoro
 import soundfile as sf
-kokoro = Kokoro(
-    '${HOME}/.local/share/kokoro/kokoro-v1.0.onnx',
-    '${HOME}/.local/share/kokoro/voices-v1.0.bin'
-)
-samples, sr = kokoro.create('Hola, esto es una prueba de Kokoro TTS.', voice='af_sarah')
-sf.write('/tmp/kokoro-test.wav', samples, sr)
-print(f"   OK Audio: /tmp/kokoro-test.wav ({len(samples)/sr:.1f}s @ {sr}Hz)")
-PYEOF
-  log_ok "Test audio generated: /tmp/kokoro-test.wav"
-}
+k = Kokoro('${dir}/kokoro-v1.0.onnx', '${dir}/voices-v1.0.bin')
+s, r = k.create('Hola, esto es una prueba.', voice='af_sarah')
+sf.write('/tmp/kokoro-test.wav', s, r)
+print(f'  ✓ Test audio: /tmp/kokoro-test.wav ({len(s)/r:.1f}s)')" 2>&1 | tail -1
 
-# ─── Main ───────────────────────────────────────────────────────────
-main() {
-  cat <<-EOF
-
-  Protos — Voice runtime installer
-  $(os_pretty_name)
-
-EOF
-
-  clone_or_cd
-  ensure_venv
-
-  step_system_deps
-  step_kokoro_models
-  step_kokoro_env
-  step_project_env
-  step_python_packages
-  step_kokoro_test
-
-  local source_cmd=""
-  if [ -f "${VENV_DIR}/bin/activate" ]; then
-    source_cmd="source ${VENV_DIR}/bin/activate && "
-  fi
-
-  cat <<-EOF
-
-  ──────────────────────────────────────
-  Installed successfully
-  ──────────────────────────────────────
-  Location: ${REPO_DIR}
-  Models:   ${HOME}/.local/share/kokoro
-  Test:     /tmp/kokoro-test.wav
-
-  Next:
-    cd ${REPO_DIR}
-    ${source_cmd}vim .env      # set API_LLM
-    ${source_cmd}make run      # start voice loop
-  ──────────────────────────────────────
-EOF
+  local s=""
+  [ -f "${VENV_DIR}/bin/activate" ] && s="source ${VENV_DIR}/bin/activate && "
+  echo
+  log "Done — cd ${REPO_DIR} && ${s}make run"
 }
 
 main "$@"
