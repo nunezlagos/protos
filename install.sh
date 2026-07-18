@@ -87,8 +87,14 @@ ensure_venv() {
   local pm; pm="$(os_pkg_manager)"
   case "${pm}" in
     pacman)
-      command -v yay &>/dev/null || fail "Install yay, then: yay -S python312"
-      info "Installing python312 via yay..."
+      if ! command -v yay &>/dev/null; then
+        info "Installing yay (AUR helper)..."
+        sudo pacman -S --needed --noconfirm git base-devel >/dev/null 2>&1
+        git clone --depth=1 https://aur.archlinux.org/yay.git /tmp/yay-install 2>/dev/null
+        (cd /tmp/yay-install && makepkg -si --noconfirm) >/dev/null 2>&1
+        rm -rf /tmp/yay-install
+      fi
+      info "Installing python312..."
       yay -S --noconfirm python312
       python3.12 -m venv "${VENV_DIR}" --clear
       PIP="${VENV_DIR}/bin/pip"; PYTHON="${VENV_DIR}/bin/python"
