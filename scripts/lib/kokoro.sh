@@ -45,7 +45,7 @@ kokoro_install_python_pkg() {
 kokoro_test() {
   log_info "Generating test audio..."
 
-  local lang="${KOKORO_LANGUAGE:-en-us}"
+  local lang="${KOKORO_LANGUAGE:-es}"
   local text
   case "${lang}" in
     es*) text="Hola, esto es una prueba de Kokoro TTS." ;;
@@ -97,7 +97,7 @@ KOKORO_VOICES="${KOKORO_DIR}/voices-${KOKORO_TAG}.bin"
 KOKORO_VOICE_DEFAULT="af_sarah"
 
 # Language: en-us, en-gb, es, fr, pt, it, ja, zh, hi, ko
-KOKORO_LANGUAGE="en-us"
+KOKORO_LANGUAGE="es"
 
 # Speech speed: 0.5 (slow) to 2.0 (fast), default 1.0
 # KOKORO_SPEED="1.0"
