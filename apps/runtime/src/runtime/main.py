@@ -118,10 +118,17 @@ class VoiceLoop:
                 break
             playback_chunks.append(samples)
             if chunk_idx == 0:
+                print(f"  playback ref: {len(samples)} samples")
                 playback_ref = np.concatenate(playback_chunks) if len(playback_chunks) > 1 else samples
                 barge_thread = self._barge_in.start(playback_ref)
             sd.play(samples, sr, device=OUTPUT_DEVICE if OUTPUT_DEVICE >= 0 else None)
-            sd.wait()
+            t = threading.Thread(target=sd.wait)
+            t.start()
+            t.join(timeout=10)
+            if t.is_alive():
+                print("  (audio timeout, skipping)")
+                sd.stop()
+                break
             if self._barge_in.interrupted:
                 sd.stop()
                 break
@@ -152,17 +159,22 @@ class VoiceLoop:
                 if len(audio) < SAMPLE_RATE * 0.3:
                     continue
 
+                print("  Transcribiendo...", end=" ", flush=True)
                 text = self._stt.transcribe(audio).strip()
                 if not text:
+                    print("(silencio)")
                     continue
-
-                print(f"  Tu: {text}")
+                print(text)
                 self._history.append("user", text)
 
+                print("  Consultando Gemini...", end=" ", flush=True)
                 response = self._llm.ask(text, self._history.format())
-                print(f"  Protos: {response}")
+                print(response)
 
+                print("  Generando TTS...", end=" ", flush=True)
                 tts_stream = self._tts.speak_stream(response)
+                print("OK")
+
                 interrupted = self._play_stream_with_bargein(tts_stream)
 
                 if interrupted:
@@ -173,7 +185,9 @@ class VoiceLoop:
             except KeyboardInterrupt:
                 break
             except Exception as e:
-                print(f"  Error: {e}")
+                print(f"\n  Error: {e}")
+                import traceback
+                traceback.print_exc()
 
         print("\nChau!")
 
