@@ -11,6 +11,17 @@ ok()    { printf "${GREEN}  ✓ %s${NC}\n" "$*"; }
 info()  { printf "${CYAN}  · %s${NC}\n" "$*"; }
 fail()  { printf "${RED}  ✗ %s${NC}\n" "$*"; exit 1; }
 
+spinner() {
+  local pid=$1 msg="$2" s="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏" i=0
+  while kill -0 "$pid" 2>/dev/null; do
+    printf "\r  ${CYAN}%s${NC} %s" "${s:i++%${#s}:1}" "$msg"
+    sleep 0.1
+  done
+  wait "$pid"; local rc=$?
+  [ "$rc" -eq 0 ] && printf "\r  ${GREEN}✓${NC} %s\n" "$msg" || printf "\r  ${RED}✗${NC} %s\n" "$msg"
+  return "$rc"
+}
+
 os_id()           { . /etc/os-release &>/dev/null && printf "%s" "${ID}" || printf "unknown"; }
 os_pretty_name()  { . /etc/os-release &>/dev/null && printf "%s" "${PRETTY_NAME:-${ID}}" || printf "unknown"; }
 os_pkg_manager() {
@@ -38,7 +49,7 @@ pkg_install() {
 }
 
 REPO_DIR=""
-PYTHON="python3"; PIP="python3 -m pip"; VENV_DIR=""
+PYTHON="python3"; PIP="pip3"; VENV_DIR=""
 
 clone_or_cd() {
   if [ -f "Makefile" ] && [ -f "install.sh" ] && [ -d "libs" ]; then
@@ -51,11 +62,28 @@ clone_or_cd() {
 
 ensure_venv() {
   VENV_DIR="${REPO_DIR}/venv"
-  python3 -m pip install --dry-run --quiet 2>/dev/null && return
-  python3 -m pip install --dry-run --break-system-packages --quiet 2>/dev/null && { PIP="python3 -m pip --break-system-packages"; return; }
-  info "Creating virtualenv..."
-  python3 -m venv "${VENV_DIR}" --clear
-  PIP="${VENV_DIR}/bin/pip"; PYTHON="${VENV_DIR}/bin/python"
+
+  # Try system python3 first
+  python3 -m pip install --dry-run kokoro-onnx --quiet 2>/dev/null && {
+    python3 -m pip install --dry-run --quiet 2>/dev/null && return
+    python3 -m pip install --dry-run --break-system-packages --quiet 2>/dev/null && { PIP="python3 -m pip --break-system-packages"; return; }
+    info "Creating virtualenv..."
+    python3 -m venv "${VENV_DIR}" --clear
+    PIP="${VENV_DIR}/bin/pip"; PYTHON="${VENV_DIR}/bin/python"
+    return
+  }
+
+  # System python can't install kokoro-onnx — scan for compatible versions
+  local alt
+  for alt in python3.12 python3.11 python3.10 python3.13; do
+    command -v "$alt" &>/dev/null || continue
+    info "Using ${alt} for compatibility..."
+    $alt -m venv "${VENV_DIR}" --clear
+    PIP="${VENV_DIR}/bin/pip"; PYTHON="${VENV_DIR}/bin/python"
+    return
+  done
+
+  fail "No compatible Python found (kokoro-onnx needs 3.10-3.13). Install one (e.g. python3.12) and re-run."
 }
 
 main() {
@@ -94,9 +122,8 @@ EOF
   [ -f ".env" ] || { cp .env.example .env; info "Created .env — set API_LLM before running"; }
   ok "Config"
 
-  ${PIP} install -U --quiet kokoro-onnx sounddevice soundfile
-  ${PIP} install -e libs/kokoro apps/runtime
-  ok "Python packages"
+  ( ${PIP} install -U --quiet kokoro-onnx sounddevice soundfile && ${PIP} install -e libs/kokoro apps/runtime ) &
+  spinner $! "Installing Python packages"
 
   ${PYTHON} -c "
 from kokoro_onnx import Kokoro

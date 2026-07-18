@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Kokoro TTS wrapper for Protos voice runtime"
 requires-python = ">=3.10"
 dependencies = [
-    "kokoro-onnx>=1.0",
+    "kokoro-onnx>=0.4",
 ]
 
 [tool.pytest.ini_options]
