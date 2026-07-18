@@ -1,8 +1,10 @@
 """Voice loop: VAD record → Whisper STT → Gemini LLM → Kokoro TTS + barge-in."""
 
+import os
 import signal
 import sys
 import threading
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,13 +21,23 @@ from .tts import KokoroTTS
 
 SAMPLE_RATE = AudioPreprocessor.SAMPLE_RATE
 BLOCK_SIZE = 320
+VAD_THRESHOLD = float(os.getenv("PROTOS_VAD_THRESHOLD", "0.15"))
+MAX_RECORD_SEC = float(os.getenv("PROTOS_MAX_RECORD_SEC", "10"))
+INPUT_DEVICE = int(os.getenv("PROTOS_INPUT_DEVICE", "-1"))
+OUTPUT_DEVICE = int(os.getenv("PROTOS_OUTPUT_DEVICE", "-1"))
 
 
-def _list_audio_devices():
+def _list_devices():
+    print("  Input devices:")
     for d in sd.query_devices():
         if d["max_input_channels"] > 0:
             print(f"    {d['index']}: {d['name']}")
-    print(f"  Default: {sd.default.device[0]}")
+    print("  Output devices:")
+    for d in sd.query_devices():
+        if d["max_output_channels"] > 0:
+            print(f"    {d['index']}: {d['name']}")
+    print(f"  Default input: {sd.default.device[0]}")
+    print(f"  Default output: {sd.default.device[1]}")
 
 
 class VoiceLoop:
@@ -37,7 +49,7 @@ class VoiceLoop:
         self._history = HistoryWindow()
         self._barge_in = BargeInLayer(self._preprocessor)
         self._running = True
-        self._show_vad = False
+        self._show_vad = True
 
     def _record_until_speech_end(self) -> np.ndarray:
         frames: list[np.ndarray] = []
@@ -45,16 +57,19 @@ class VoiceLoop:
         silence_frames = 0
         max_silence = int(0.8 * SAMPLE_RATE / BLOCK_SIZE)
         has_any_speech = False
+        max_total = int(MAX_RECORD_SEC * SAMPLE_RATE / BLOCK_SIZE)
+        total_frames = 0
 
         def callback(indata, _frames_count, _time_info, status):
-            nonlocal speech_active, silence_frames, has_any_speech
+            nonlocal speech_active, silence_frames, has_any_speech, total_frames
             if not self._running:
                 raise sd.CallbackAbort
 
             clean, prob = self._preprocessor.process(indata.flatten(), None)
             frames.append(clean.copy())
+            total_frames += 1
 
-            if prob > 0.5:
+            if prob > VAD_THRESHOLD:
                 speech_active = True
                 has_any_speech = True
                 silence_frames = 0
@@ -63,15 +78,22 @@ class VoiceLoop:
                 if silence_frames >= max_silence:
                     raise sd.CallbackStop
 
-            if self._show_vad and prob > 0.1:
-                bar = "█" * int(prob * 20)
-                print(f"\r  VAD: {prob:.2f} {bar}", end="", flush=True)
+            if total_frames >= max_total:
+                raise sd.CallbackStop
 
-        print("  Escuchando... ", end="", flush=True)
+            if self._show_vad:
+                if prob > 0.05:
+                    bar = "█" * int(prob * 20)
+                    print(f"\r  VAD: {prob:.2f} {bar}", end="", flush=True)
+                elif not speech_active:
+                    print("\r  Escuchando...   ", end="", flush=True)
+
+        print("  Escuchando...", end="", flush=True)
+        input_kwargs = dict(samplerate=SAMPLE_RATE, channels=1, blocksize=BLOCK_SIZE, callback=callback)
+        if INPUT_DEVICE >= 0:
+            input_kwargs["device"] = INPUT_DEVICE
         try:
-            with sd.InputStream(
-                samplerate=SAMPLE_RATE, channels=1, blocksize=BLOCK_SIZE, callback=callback
-            ):
+            with sd.InputStream(**input_kwargs):
                 while self._running:
                     sd.sleep(50)
         except sd.CallbackStop:
@@ -93,7 +115,7 @@ class VoiceLoop:
             if chunk_idx == 0:
                 playback_ref = np.concatenate(playback_chunks) if len(playback_chunks) > 1 else samples
                 barge_thread = self._barge_in.start(playback_ref)
-            sd.play(samples, sr)
+            sd.play(samples, sr, device=OUTPUT_DEVICE if OUTPUT_DEVICE >= 0 else None)
             sd.wait()
             if self._barge_in.interrupted:
                 sd.stop()
@@ -114,10 +136,10 @@ class VoiceLoop:
         print("Protos runtime iniciado. Habla cuando quieras (Ctrl+C para salir).")
         print("-" * 50)
         print("Audio devices:")
-        _list_audio_devices()
+        _list_devices()
+        print(f"  VAD threshold: {VAD_THRESHOLD}")
+        print(f"  Max record: {MAX_RECORD_SEC}s")
         print()
-
-        self._show_vad = True
 
         while self._running:
             try:
