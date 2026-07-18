@@ -1,8 +1,8 @@
 .PHONY: install install-all test test-all lint fmt run
 
 PYTHON = python3
-ifneq ($(wildcard venv/bin/python),)
-PYTHON = venv/bin/python
+ifneq ($(wildcard $(CURDIR)/venv/bin/python),)
+PYTHON = $(CURDIR)/venv/bin/python
 endif
 PIP = $(PYTHON) -m pip
 
@@ -27,4 +27,4 @@ fmt:
 	ruff format libs/ apps/ 2>/dev/null || true
 
 run:
-	cd apps/runtime && $(PYTHON) -m runtime.main
+	PYTHONPATH=apps/runtime/src $(PYTHON) -m runtime.main
