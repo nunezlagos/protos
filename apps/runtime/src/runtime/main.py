@@ -21,7 +21,7 @@ from .tts import KokoroTTS
 
 SAMPLE_RATE = AudioPreprocessor.SAMPLE_RATE
 BLOCK_SIZE = 320
-VAD_THRESHOLD = float(os.getenv("PROTOS_VAD_THRESHOLD", "0.15"))
+VAD_THRESHOLD = float(os.getenv("PROTOS_VAD_THRESHOLD", "0.08"))
 MAX_RECORD_SEC = float(os.getenv("PROTOS_MAX_RECORD_SEC", "10"))
 INPUT_DEVICE = int(os.getenv("PROTOS_INPUT_DEVICE", "-1"))
 OUTPUT_DEVICE = int(os.getenv("PROTOS_OUTPUT_DEVICE", "-1"))
@@ -69,7 +69,9 @@ class VoiceLoop:
             frames.append(clean.copy())
             total_frames += 1
 
-            if prob > VAD_THRESHOLD:
+            rms = np.sqrt(np.mean(indata.flatten() ** 2))
+
+            if prob > VAD_THRESHOLD or rms > 0.02:
                 speech_active = True
                 has_any_speech = True
                 silence_frames = 0
